@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Model Files (CRITICAL - DO NOT COMMIT)
+models/**/*.pth
+models/**/*.pt
+models/**/*.onnx
+models/**/*.bin
+models/active/*
+!models/active/.gitkeep
+models/inactive/*
+!models/inactive/.gitkeep
+
+# Temporary and Cache
+temp/
+cache/
+.cache/
+logs/
+*.log
+
+# Frontend
+node_modules/
+dist/
+.nuxt/
+.cache/
+.output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Audio files (temporary)
+temp/mp3/*.mp3
+temp/audio/*.wav
+
+# Large files (if any)
+*.mp4
+*.mkv
+*.tar.gz
+*.zip
+
+# Secrets (never commit!)
+*.pem
+*.key
+*.pass
+aws-credentials

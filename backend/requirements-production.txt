@@ -1,0 +1,60 @@
+# PRODUCTION DEPENDENCIES - PINNED VERSIONS
+# Plattdeutsch TTS Platform
+# Python 3.10+ required
+# Last updated: 2025-12-22
+
+# ============================================================
+# WEB FRAMEWORK & CORS
+# ============================================================
+Flask==2.3.3
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+
+# ============================================================
+# TTS INFERENCE ENGINE
+# ============================================================
+# Core TTS library - pinned to stable inference version
+TTS==0.22.0
+
+# ============================================================
+# DEEP LEARNING INFERENCE
+# ============================================================
+# PyTorch CPU - use this for AWS EC2/Lambda deployments
+# For GPU, replace with: torch==2.1.1+cu121 (CUDA 12.1)
+torch==2.1.1
+
+# NumPy pinned for compatibility with torch
+numpy==1.24.3
+
+# ============================================================
+# AUDIO PROCESSING
+# ============================================================
+# Audio I/O and feature extraction
+librosa==0.10.0
+
+# Signal processing utilities
+scipy==1.10.1
+
+# ============================================================
+# UTILITIES
+# ============================================================
+# Environment variable management
+python-dotenv==1.0.0
+
+# ============================================================
+# AWS DEPLOYMENT SUPPORT (OPTIONAL)
+# ============================================================
+# Uncomment these if deploying to AWS Lambda/Fargate:
+# aws-lambda-powertools==2.20.0  # Logging & monitoring
+# boto3==1.26.0                   # AWS SDK (for S3 model storage)
+
+# ============================================================
+# REMOVED FROM PRODUCTION
+# ============================================================
+# The following are dev-only and NOT included:
+# - jupyter, ipython (notebooks)
+# - tensorboard (training monitoring)
+# - torch-optim-lbfgs (training)
+# - git (version control)
+# - pytest (testing)
+# - black, flake8 (linting)
