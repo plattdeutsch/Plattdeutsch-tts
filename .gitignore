@@ -92,3 +92,28 @@ temp/audio/*.wav
 *.key
 *.pass
 aws-credentials
+.env.production
+
+# Model files (DO NOT COMMIT - ~1GB)
+model/*.pth
+model/*.pt
+model/*.onnx
+model/*.bin
+model/best_model.pth
+
+# Keep model config (small JSON file)
+!model/config.json
+
+# Frontend build (generated during CI)
+frontend/dist/
+
+# Backend static folder (populated during CI)
+backend/static/
+
+# Elastic Beanstalk
+.elasticbeanstalk/
+*.zip
+
+# Local development
+*.local
+.env.local

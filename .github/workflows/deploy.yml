@@ -1,0 +1,343 @@
+# GitHub Actions Workflow: Deploy to AWS Elastic Beanstalk
+# Application: plattdeutsch-tts-app
+# Environment: Plattdeutsch-tts-app-env
+# Region: eu-central-1
+
+name: Deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'Plattdeutsch-tts-app-env'
+        type: string
+
+env:
+  AWS_REGION: eu-central-1
+  EB_APPLICATION_NAME: plattdeutsch-tts-app
+  EB_ENVIRONMENT_NAME: ${{ github.event.inputs.environment || 'Plattdeutsch-tts-app-env' }}
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ==========================================================================
+  # JOB 1: Build Frontend
+  # ==========================================================================
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_API_URL: ''  # Empty for same-origin API calls
+      
+      - name: Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+
+  # ==========================================================================
+  # JOB 2: Test Backend
+  # ==========================================================================
+  test-backend:
+    name: Test Backend
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsndfile1 espeak-ng
+      
+      - name: Install Python dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+      
+      - name: Test application startup (without model)
+        working-directory: backend
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from application import create_app, model_info
+          app = create_app()
+          with app.test_client() as client:
+              # Test health endpoint
+              response = client.get('/api/health')
+              assert response.status_code == 200
+              data = response.get_json()
+              assert data['status'] == 'ok'
+              assert data['model_loaded'] == False
+              print('✓ Health check passed')
+              
+              # Test TTS returns 503 when no model
+              response = client.post('/api/tts', json={'text': 'test'})
+              assert response.status_code == 503
+              print('✓ TTS correctly returns 503 without model')
+              
+              # Test status endpoint
+              response = client.get('/api/status')
+              assert response.status_code == 200
+              print('✓ Status endpoint passed')
+          
+          print('All startup tests passed!')
+          "
+
+  # ==========================================================================
+  # JOB 3: Create Deployment Package
+  # ==========================================================================
+  package:
+    name: Create Deployment Package
+    runs-on: ubuntu-latest
+    needs: [build-frontend, test-backend]
+    
+    outputs:
+      version-label: ${{ steps.version.outputs.label }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download frontend build
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: backend/static
+      
+      - name: Generate version label
+        id: version
+        run: |
+          TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+          SHORT_SHA=${GITHUB_SHA::8}
+          VERSION_LABEL="v${TIMESTAMP}-${SHORT_SHA}"
+          echo "label=${VERSION_LABEL}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION_LABEL}"
+      
+      - name: Create deployment package
+        run: |
+          # Create deployment directory
+          mkdir -p deploy
+          
+          # Copy backend files
+          cp -r backend/* deploy/
+          
+          # Copy EB extensions
+          cp -r .ebextensions deploy/
+          
+          # Copy Procfile if exists
+          [ -f Procfile ] && cp Procfile deploy/ || true
+          
+          # Remove unnecessary files
+          rm -rf deploy/__pycache__
+          rm -rf deploy/*.pyc
+          rm -rf deploy/temp/*
+          rm -f deploy/app\ copy.py
+          rm -rf deploy/requirements-dev.txt
+          
+          # Create version file
+          echo "${{ steps.version.outputs.label }}" > deploy/VERSION
+          
+          # List contents
+          echo "=== Deployment package contents ==="
+          find deploy -type f | head -50
+          
+          # Create ZIP
+          cd deploy
+          zip -r ../plattdeutsch-tts-${{ steps.version.outputs.label }}.zip .
+          cd ..
+          
+          echo "=== Package created ==="
+          ls -lh plattdeutsch-tts-*.zip
+      
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package
+          path: plattdeutsch-tts-${{ steps.version.outputs.label }}.zip
+          retention-days: 5
+
+  # ==========================================================================
+  # JOB 4: Deploy to Elastic Beanstalk
+  # ==========================================================================
+  deploy:
+    name: Deploy to Elastic Beanstalk
+    runs-on: ubuntu-latest
+    needs: package
+    environment: production
+    
+    steps:
+      - name: Download deployment package
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-package
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Upload to S3
+        run: |
+          VERSION_LABEL="${{ needs.package.outputs.version-label }}"
+          BUCKET_NAME="${{ env.EB_APPLICATION_NAME }}-deployments"
+          PACKAGE_NAME="plattdeutsch-tts-${VERSION_LABEL}.zip"
+          
+          # Create bucket if it doesn't exist
+          aws s3api head-bucket --bucket ${BUCKET_NAME} 2>/dev/null || \
+            aws s3 mb s3://${BUCKET_NAME} --region ${{ env.AWS_REGION }}
+          
+          # Upload package
+          aws s3 cp ${PACKAGE_NAME} s3://${BUCKET_NAME}/${PACKAGE_NAME}
+          
+          echo "Uploaded to s3://${BUCKET_NAME}/${PACKAGE_NAME}"
+      
+      - name: Create application version
+        run: |
+          VERSION_LABEL="${{ needs.package.outputs.version-label }}"
+          BUCKET_NAME="${{ env.EB_APPLICATION_NAME }}-deployments"
+          PACKAGE_NAME="plattdeutsch-tts-${VERSION_LABEL}.zip"
+          
+          aws elasticbeanstalk create-application-version \
+            --application-name ${{ env.EB_APPLICATION_NAME }} \
+            --version-label ${VERSION_LABEL} \
+            --source-bundle S3Bucket=${BUCKET_NAME},S3Key=${PACKAGE_NAME} \
+            --description "Deployed from GitHub Actions - ${GITHUB_SHA}"
+      
+      - name: Deploy to environment
+        run: |
+          VERSION_LABEL="${{ needs.package.outputs.version-label }}"
+          
+          aws elasticbeanstalk update-environment \
+            --application-name ${{ env.EB_APPLICATION_NAME }} \
+            --environment-name ${{ env.EB_ENVIRONMENT_NAME }} \
+            --version-label ${VERSION_LABEL }
+      
+      - name: Wait for deployment
+        run: |
+          echo "Waiting for deployment to complete..."
+          
+          for i in {1..60}; do
+            STATUS=$(aws elasticbeanstalk describe-environments \
+              --application-name ${{ env.EB_APPLICATION_NAME }} \
+              --environment-names ${{ env.EB_ENVIRONMENT_NAME }} \
+              --query 'Environments[0].Status' \
+              --output text)
+            
+            HEALTH=$(aws elasticbeanstalk describe-environments \
+              --application-name ${{ env.EB_APPLICATION_NAME }} \
+              --environment-names ${{ env.EB_ENVIRONMENT_NAME }} \
+              --query 'Environments[0].Health' \
+              --output text)
+            
+            echo "Status: ${STATUS} | Health: ${HEALTH}"
+            
+            if [ "$STATUS" == "Ready" ]; then
+              echo "✓ Deployment completed!"
+              break
+            fi
+            
+            if [ "$STATUS" == "Terminated" ] || [ "$STATUS" == "Terminating" ]; then
+              echo "✗ Environment terminated!"
+              exit 1
+            fi
+            
+            sleep 10
+          done
+      
+      - name: Get environment URL
+        run: |
+          URL=$(aws elasticbeanstalk describe-environments \
+            --application-name ${{ env.EB_APPLICATION_NAME }} \
+            --environment-names ${{ env.EB_ENVIRONMENT_NAME }} \
+            --query 'Environments[0].CNAME' \
+            --output text)
+          
+          echo "============================================"
+          echo "✓ Deployment successful!"
+          echo "Application URL: http://${URL}"
+          echo "Health Check: http://${URL}/api/health"
+          echo "============================================"
+
+  # ==========================================================================
+  # JOB 5: Post-deployment validation
+  # ==========================================================================
+  validate:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+    needs: deploy
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Test health endpoint
+        run: |
+          URL=$(aws elasticbeanstalk describe-environments \
+            --application-name ${{ env.EB_APPLICATION_NAME }} \
+            --environment-names ${{ env.EB_ENVIRONMENT_NAME }} \
+            --query 'Environments[0].CNAME' \
+            --output text)
+          
+          echo "Testing health endpoint..."
+          
+          for i in {1..5}; do
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "http://${URL}/api/health" || echo "000")
+            
+            if [ "$RESPONSE" == "200" ]; then
+              echo "✓ Health check passed (HTTP ${RESPONSE})"
+              
+              # Get detailed health info
+              curl -s "http://${URL}/api/health" | jq .
+              exit 0
+            fi
+            
+            echo "Health check returned ${RESPONSE}, retrying..."
+            sleep 10
+          done
+          
+          echo "✗ Health check failed after 5 attempts"
+          exit 1

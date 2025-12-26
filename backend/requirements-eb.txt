@@ -1,0 +1,23 @@
+# Production requirements for AWS Elastic Beanstalk
+# Optimized for deployment without development dependencies
+
+# Web framework
+Flask==2.3.3
+Flask-CORS==4.0.0
+Werkzeug==2.3.7
+gunicorn==21.2.0
+
+# TTS Engine (Coqui TTS)
+TTS==0.22.0
+
+# PyTorch (CPU only for production - smaller package)
+torch==2.1.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Audio processing
+numpy>=1.24.3
+scipy>=1.10.1
+librosa>=0.10.0
+
+# Environment
+python-dotenv==1.0.0
