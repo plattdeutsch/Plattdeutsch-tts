@@ -247,9 +247,9 @@ jobs:
       - name: Deploy to environment
         run: |
           aws elasticbeanstalk update-environment \
-      --application-name ${{ env.EB_APPLICATION_NAME }} \
-      --environment-name ${{ env.EB_ENVIRONMENT_NAME }} \
-      --version-label "${{ needs.package.outputs.version-label }}
+        --application-name ${{ env.EB_APPLICATION_NAME }} \
+        --environment-name ${{ env.EB_ENVIRONMENT_NAME }} \
+        --version-label "${{ needs.package.outputs.version-label }}
       
       - name: Wait for deployment
         run: |
