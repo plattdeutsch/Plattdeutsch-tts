@@ -9,7 +9,9 @@ import { Plus, Download, Zap, Loader2, Trash2, AlertCircle, FileAudio } from "lu
 import { useTestBlockStore } from "@/store/testBlockStore"
 import { PresetButtons } from "@/components/PresetButtons"
 import { FineTuningPanel } from "@/components/FineTuningPanel"
-import { wavToMp3 } from "@/lib/audioConverter"
+import { wavToMp3, downloadAudio } from "@/lib/audioConverter"
+
+
 
 
 export function TestBlock({ blockId }) {
