@@ -1,4 +1,3 @@
-@ -1,343 +0,0 @@
 # GitHub Actions Workflow: Deploy to AWS Elastic Beanstalk
 # Application: plattdeutsch-tts-app
 # Environment: Plattdeutsch-tts-app-env
@@ -247,9 +246,9 @@ jobs:
       - name: Deploy to environment
         run: |
           aws elasticbeanstalk update-environment \
-        --application-name ${{ env.EB_APPLICATION_NAME }} \
-        --environment-name ${{ env.EB_ENVIRONMENT_NAME }} \
-        --version-label "${{ needs.package.outputs.version-label }}
+            --application-name "${{ env.EB_APPLICATION_NAME }}" \
+            --environment-name "${{ env.EB_ENVIRONMENT_NAME }}" \
+            --version-label "${{ needs.package.outputs.version-label }}"
       
       - name: Wait for deployment
         run: |
